@@ -1,5 +1,14 @@
 # hyper(html) Changelog
 
+### v2.8.0
+  * updated [domdiff](https://github.com/WebReflection/domdiff#domdiff) engine to boost performance with segments and lists
+
+### v2.7.2
+  * fixed #218 which was a variant of #200
+
+### v2.7.0
+  * the `Component.for(obj)` is now created first time via `new Component(obj)` - #216
+
 ### v2.6.0
   * declarative hyper.Component via `Component.for(context, uid?)` - #202
   * hyperHTML TypeScript information - #201

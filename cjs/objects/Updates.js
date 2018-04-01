@@ -9,7 +9,9 @@ const Path = (m => m.__esModule ? m.default : m)(require('./Path.js'));
 const Style = (m => m.__esModule ? m.default : m)(require('./Style.js'));
 const Intent = (m => m.__esModule ? m.default : m)(require('./Intent.js'));
 const domdiff = (m => m.__esModule ? m.default : m)(require('../shared/domdiff.js'));
-const { create: createElement, text } = require('../shared/easy-dom.js');
+// see /^script$/i.test(nodeName) bit down here
+// import { create as createElement, text } from '../shared/easy-dom.js';
+const { text } = require('../shared/easy-dom.js');
 const { Event, WeakSet, isArray, trim } = require('../shared/poorlyfills.js');
 const { createFragment, slice } = require('../shared/utils.js');
 
@@ -29,7 +31,7 @@ const asHTML = html => ({html});
 
 // returns nodes from wires and components
 const asNode = (item, i) => {
-  return 'ELEMENT_NODE' in item ?
+  return 'ELEMENT_NODE' in item || 'COMMENT_NODE' in item ?
     item :
     (item.constructor === Wire ?
       // in the Wire case, the content can be
@@ -55,17 +57,16 @@ value instanceof Component;
 // attributes, or special text-only cases such <style>
 // elements or <textarea>
 const create = (root, paths, adopt) => {
-  const level = adopt ? [] : null;
   const updates = [];
   const length = paths.length;
   for (let i = 0; i < length; i++) {
     const info = paths[i];
     const {node, childNodes} = adopt ?
-            findNode(root, info.path, level) :
+            findNode(root, info.path) :
             Path.find(root, info.path);
     switch (info.type) {
       case 'any':
-        updates.push(setAnyContent(node, childNodes));
+        updates.push(setAnyContent(node, childNodes, adopt));
         break;
       case 'attr':
         updates.push(
@@ -90,6 +91,7 @@ const create = (root, paths, adopt) => {
               node
           )
         );
+        node.textContent = '';
         break;
     }
   }
@@ -187,7 +189,13 @@ const findAttributes = (node, paths, parts) => {
   }
   const len = remove.length;
   for (let i = 0; i < len; i++) {
-    node.removeAttributeNode(remove[i]);
+    // Edge HTML bug #16878726
+    const attribute = remove[i];
+    if (/^id$/i.test(attribute.name))
+      node.removeAttribute(attribute.name);
+    // standard browsers would work just fine here
+    else
+      node.removeAttributeNode(remove[i]);
   }
 
   // This is a very specific Firefox/Safari issue
@@ -195,10 +203,15 @@ const findAttributes = (node, paths, parts) => {
   // it's probably worth patching regardless.
   // Basically, scripts created through strings are death.
   // You need to create fresh new scripts instead.
-  // TODO: is there any other node that needs such nonsense ?
+  // TODO: is there any other node that needs such nonsense?
   const nodeName = node.nodeName;
   if (/^script$/i.test(nodeName)) {
-    const script = createElement(node, nodeName);
+    // this used to be like that
+    // const script = createElement(node, nodeName);
+    // then Edge arrived and decided that scripts created
+    // through template documents aren't worth executing
+    // so it became this ... hopefully it won't hurt in the wild
+    const script = document.createElement(nodeName);
     for (let i = 0; i < attributes.length; i++) {
       script.setAttributeNode(attributes[i].cloneNode(true));
     }
@@ -208,27 +221,42 @@ const findAttributes = (node, paths, parts) => {
 };
 
 // used to adopt live nodes from virtual paths
-const findNode = (node, path, level) => {
+const findNode = (node, path) => {
   const childNodes = [];
   const length = path.length;
   for (let i = 0; i < length; i++) {
-    let index = path[i] + (level[i] || 0);
-    node = node.childNodes[index];
-    if (
-      node.nodeType === COMMENT_NODE &&
-      /^\u0001:[0-9a-zA-Z]+$/.test(node.textContent)
-    ) {
-      const textContent = node.textContent;
-      while ((node = node.nextSibling)) {
-        index++;
-        if (node.nodeType === COMMENT_NODE && node.textContent === textContent) {
-          break;
-        } else {
-          childNodes.push(node);
+    let index = path[i];
+    let filteredChildren = []
+    for (let ii = 0; ii < node.childNodes.length; ii++) {
+      let n = node.childNodes[ii]
+      filteredChildren.push(n)
+      if (
+        n.nodeType === COMMENT_NODE &&
+        /^\u0001.+$/.test(n.textContent)
+      ) {
+        let textContent = n.textContent
+        while ((n = n.nextSibling)) {
+          ii++;
+          if (n.nodeType === COMMENT_NODE && n.textContent === textContent) {
+            break;
+          }
         }
       }
     }
-    level[i] = index - path[i];
+    node = filteredChildren[index]
+  }
+  if (node.nodeType === COMMENT_NODE) {
+    let textContent = node.textContent
+    while ((node = node.nextSibling)) {
+      if (node.nodeType === COMMENT_NODE && node.textContent === textContent) {
+        break;
+      } else if (
+        node.nodeType === ELEMENT_NODE ||
+        trim.call(node.textContent).length !== 0
+      ) {
+        childNodes.push(node)
+      }
+    }
   }
   return {node, childNodes};
 };
@@ -262,7 +290,7 @@ const isPromise_ish = value => value != null && 'then' in value;
 //  * it's an explicit intent, perform the desired operation
 //  * it's an Array, resolve all values if Promises and/or
 //    update the node with the resulting list of content
-const setAnyContent = (node, childNodes) => {
+const setAnyContent = (node, childNodes, adopt) => {
   let fastPath = false;
   let oldValue;
   const anyContent = value => {
@@ -474,8 +502,7 @@ const setAttribute = (node, name, original, adopt) => {
 // different from text there but it's worth checking
 // for possible defined intents.
 const setTextContent = node => {
-  // avoid hyper comments inside textarea/style when value is undefined
-  let oldValue = '';
+  let oldValue;
   const textContent = value => {
     if (oldValue !== value) {
       oldValue = value;

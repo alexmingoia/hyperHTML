@@ -18,9 +18,9 @@ const wires = new WeakMap;
 // via html:id or :id convention. Such :id allows same JS objects
 // to be associated to different DOM structures accordingly with
 // the used template literal without losing previously rendered parts.
-const wire = (obj, type) => obj == null ?
-  content(type || 'html') :
-  weakly(obj, type || 'html');
+const wire = (obj, type, adoptNode) => obj == null ?
+  content(type || 'html', adoptNode) :
+  weakly(obj, type || 'html', adoptNode);
 
 // A wire content is a virtual reference to one or more nodes.
 // It's represented by either a DOM node, or an Array.
@@ -28,25 +28,33 @@ const wire = (obj, type) => obj == null ?
 // all nodes through the list of related callbacks.
 // In few words, a wire content is like an invisible parent node
 // in charge of updating its content like a bound element would do.
-const content = type => {
+const content = (type, adoptNode) => {
   let wire, container, content, template, updates;
   return function (statics) {
     statics = unique(statics);
     let setup = template !== statics;
     if (setup) {
       template = statics;
-      content = fragment(document);
+      content = adoptNode || fragment(document);
       container = type === 'svg' ?
         document.createElementNS(SVG_NAMESPACE, 'svg') :
         content;
-      updates = render.bind(container);
+      if (adoptNode) {
+        updates = function() {
+          render.adopt = true;
+          return render.apply(container, arguments)
+        }
+      } else {
+        render.adopt = false;
+        updates = render.bind(container)
+      }
     }
     updates.apply(null, arguments);
     if (setup) {
       if (type === 'svg') {
         append(content, slice.call(container.childNodes));
       }
-      wire = wireContent(content);
+      wire = wireContent(content, !!adoptNode);
     }
     return wire;
   };
@@ -55,7 +63,7 @@ const content = type => {
 // wires are weakly created through objects.
 // Each object can have multiple wires associated
 // and this is thanks to the type + :id feature.
-const weakly = (obj, type) => {
+const weakly = (obj, type, adoptNode) => {
   const i = type.indexOf(':');
   let wire = wires.get(obj);
   let id = type;
@@ -64,7 +72,7 @@ const weakly = (obj, type) => {
     type = type.slice(0, i) || 'html';
   }
   if (!wire) wires.set(obj, wire = {});
-  return wire[id] || (wire[id] = content(type));
+  return wire[id] || (wire[id] = content(type, adoptNode));
 };
 
 // a document fragment loses its nodes as soon
@@ -77,7 +85,7 @@ const weakly = (obj, type) => {
 // these are either returned as Array or, if there's ony one entry,
 // as single referenced node that won't disappear from the fragment.
 // The initial fragment, at this point, would be used as unique reference.
-const wireContent = node => {
+const wireContent = (node, adoptable) => {
   const childNodes = node.childNodes;
   const length = childNodes.length;
   const wireNodes = [];
@@ -89,8 +97,8 @@ const wireContent = node => {
     ) {
       wireNodes.push(child);
     }
-  }
-  return wireNodes.length === 1 ? wireNodes[0] : new Wire(wireNodes);
+}
+  return wireNodes.length === 1 ? wireNodes[0] : new Wire(wireNodes, adoptable);
 };
 
 exports.content = content;

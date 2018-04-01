@@ -30,7 +30,21 @@ Thank you to all our backers! 🙏 [[Become a backer](https://opencollective.com
 ## Contributors
 
 This project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)].
-<a href="graphs/contributors"><img src="https://opencollective.com/hyperhtml/contributors.svg?width=890" /></a>
+<a href="https://github.com/WebReflection/hyperHTML/graphs/contributors"><img src="https://opencollective.com/hyperhtml/contributors.svg?width=890" /></a>
+
+- - -
+
+### Seamlessly Isomorphic
+No matter if you use ESM or CommonJS, you can use [hypermorphic](https://github.com/WebReflection/hypermorphic#hypermorphic-)
+to load same features on both client and server.
+
+```js
+// ESM example (assuming bundlers/ESM loaders in place)
+import {bind, wire} from 'hypermorphic';
+
+// CommonJS example
+const {bind, wire} = require('hypermorphic');
+```
 
 - - -
 
