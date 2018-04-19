@@ -31,7 +31,7 @@ const asHTML = html => ({html});
 
 // returns nodes from wires and components
 const asNode = (item, i) => {
-  return 'ELEMENT_NODE' in item || 'COMMENT_NODE' in item ?
+  return 'ELEMENT_NODE' in item ?
     item :
     (item.constructor === Wire ?
       // in the Wire case, the content can be
@@ -245,7 +245,7 @@ const findNode = (node, path) => {
     }
     node = filteredChildren[index]
   }
-  if (node.nodeType === COMMENT_NODE) {
+  if (node.nodeType === COMMENT_NODE && /^\u0001.+$/.test(node.textContent)) {
     let textContent = node.textContent
     while ((node = node.nextSibling)) {
       if (node.nodeType === COMMENT_NODE && node.textContent === textContent) {
